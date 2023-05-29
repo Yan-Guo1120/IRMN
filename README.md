@@ -1,0 +1,1 @@
+# Inverse-regression-for-mixture-normal-predictors
