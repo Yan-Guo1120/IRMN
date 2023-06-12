@@ -1,4 +1,4 @@
-# Rcode for Adjusting inverse regression for predictors with clustered distribution
+# R code for Adjusting inverse regression for predictors with clustered distribution
   (12/6/2023，submitted to Electronic Journal of Statistics)
 1. fsir.R: Include all support functions to implement the SIR_M and SIR_RM methods.
 2. fsave.R: Include all support functions to implement the SAVE_M and SAVE_RM methods.
