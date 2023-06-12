@@ -1,0 +1,136 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+rm(list=ls())
+library(np)
+source("fsir.R")
+source("fssir_HD.R")
+source("myCHIME.R")
+library(dr)
+
+n <- 200
+p <- 200
+q <- 2   ### fix q
+d <- 1
+h <- 5
+s0 <- 10
+b0<-c(1,1,1,rep(0,p-3))
+u1 <- 1
+
+r<-0.3
+Sigma<-diag(1,p)
+for (i in 1:p)
+ for (j in 1:p)
+   Sigma[i,j]=(-r)^(abs(i-j))
+
+mu_1 <- c(rep(u1,p))
+beta_star = matrix(c(rep(u1*2,s0),rep(0,p-s0)), ncol=1)
+mu_2 <- as.vector(mu_1 -  Sigma %*% beta_star)
+pie <- 0.5   
+
+
+M<-100
+bia<-matrix(0,3,M)
+tpr<-matrix(0,3,M)
+fpr<-matrix(0,3,M)
+for (i in 1:M)
+{
+  options(warn=-1)
+  w<-rbinom(n,size=1,prob=pie)
+  x1<-t(t(matrix(sqrt(1.5)*rnorm(n*p),,p)%*%matpower(Sigma,0.5))+mu_1)
+  x2<-t(t(matrix(sqrt(1.5)*rnorm(n*p),,p)%*%matpower(Sigma,0.5))+mu_2)
+  x<-x1*(1-w) + x2*w
+  
+  y <- ((x[,1]+x[,2]+x[,3])/sqrt(3)+1.5)^2 + 0.5*rnorm(n)   ### model A 
+  # y <- 1+exp( (x[,1]+x[,2]+x[,3])/sqrt(3) ) + rnorm(n)    ### model B
+
+  
+  s<-kmeans(x,centers=q)
+  lam0<-s$size/n
+  mu0<-list()
+  for (k in 1:q)
+  {mu0[[k]]=s$centers[k,]}
+  mu_0 <- cbind(mu0[[1]],mu0[[2]])
+  res_chime <- try(CHIME(x, lam0[2], mu_0, beta_star, rho=0.1),silent=TRUE)
+  if('try-error'%in%class(res_chime))next
+  mux<-res_chime[[2]][[1]]
+  sigx<-res_chime[[3]]
+  pix<-cbind(1-res_chime[[4]],res_chime[[4]])
+  
+  ### SSIR_M ###
+  Ys <- slicing(y,h)$ys  
+  M1 <- covxy_M(x,Ys,h,q,pix,mux)
+  PI1 <- ssir(M1%*%t(M1),sigx,lambda=0.05,K=1,nu=1,epsilon=1e-3,maxiter=1000,trace=FALSE,init=FALSE,initPi=NULL,initH=NULL,initGamma=NULL)$Pi
+  temp1 <- eigen(round((PI1+t(PI1))/2,2))
+  b1 <- temp1$vectors[,1:d]
+  bia[1,i] <- dv(b1,b0)
+  cat("dist1=",bia[1,i],"\n")
+  est1 <- b1%*%t(b1)
+  tpr[1,i] <- sum(abs(diag(est1))>1e-5 & abs(b0)>1e-5)/sum(b0!=0)
+  fpr[1,i] <- sum(abs(diag(est1))>1e-2 & b0< 1e-5)/sum(b0==0)
+ 
+  
+  ### SSIR_RM  ###
+  M2 <- covxy_RM(x,Ys,h,q,b1,pix,mux,sigx)
+  PI2 <- ssir(M2%*%t(M2),sigx,lambda=0.05,K=1,nu=1,epsilon=1e-3,maxiter=1000,trace=FALSE,init=FALSE,initPi=NULL,initH=NULL,initGamma=NULL)$Pi
+  temp2 <- eigen(round((PI2+t(PI2))/2,2))
+  b2 <- temp2$vectors[,1:d]
+  bia[2,i] <- dv(b2,b0)
+  cat("dist2=",bia[2,i],"\n")
+  est2 <- b2%*%t(b2)
+  tpr[2,i] <- sum(abs(diag(est2))>1e-5 & abs(b0)>1e-5)/sum(b0!=0)
+  fpr[2,i] <- sum(abs(diag(est2))>1e-2 & b0< 1e-5)/sum(b0==0)
+  
+
+  ### SSIR - Tan (2018)  ###
+  M3 <- covxy(y,x,nslice=h,standardize=TRUE)
+  PI3 <- ssir(M3,sigx,lambda=0.05,K=1,nu=1,epsilon=1e-3,maxiter=1000,trace=FALSE,init=FALSE,initPi=NULL,initH=NULL,initGamma=NULL)$Pi
+  temp3 <- eigen(round((PI3+t(PI3))/2,2))
+  b3 <- temp3$vectors[,1:d]
+  bia[3,i] <- dv(b3,b0)
+  cat("dist3=",bia[3,i],"\n")
+  est3 <- b3%*%t(b3)
+  tpr[3,i] <- sum(abs(diag(est3))>1e-5 & abs(b0)>1e-5)/sum(b0!=0)
+  fpr[3,i] <- sum(abs(diag(est3))>1e-2 & b0< 1e-5)/sum(b0==0)
+  
+  print(i)
+}
+m2<-apply(bia,1,mean)
+s2<-apply(bia,1,sd)
+output2<-matrix(c(m2,s2),2,3,byrow = TRUE)
+column=c("b_es1","b_es2","b_sparseSIR")
+row=c("mean of bias","sd of bias")
+dimnames(output2)=list(row,column)
+output2
+
+m3<-apply(fpr,1,mean)
+s3<-apply(fpr,1,sd)
+output3<-matrix(c(m3,s3),2,3,byrow = TRUE)
+column=c("b_es1","b_es2","b_sparseSIR")
+row=c("mean of bias","sd of bias")
+dimnames(output3)=list(row,column)
+output3
+
+m4<-apply(tpr,1,mean)
+s4<-apply(tpr,1,sd)
+output4<-matrix(c(m4,s4),2,3,byrow = TRUE)
+column=c("b_es1","b_es2","b_sparseSIR")  
+row=c("mean of bias","sd of bias") 
+dimnames(output4)=list(row,column)
+output4
+```
+
+
+
+
+```{r}
+res_chime
+```
+
+
+
+
+

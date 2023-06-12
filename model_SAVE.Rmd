@@ -1,0 +1,137 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library(mixtools)
+library(dr)
+source("fsave.R")
+library(np)
+library(CVarE)
+library(MAVE)
+source("functions_ADR.R")
+
+n <- 500
+p <- 10
+q <- 2
+d <- 1
+h <- 5
+b0<-c(1,1,rep(0,p-2))
+# b0<-cbind(c(1,0,rep(0,p-2)),c(0,1,rep(0,p-2)))
+
+# (a)
+a <- 1.5
+mu1<-c(-a,-a,0,rep(0,p-3))
+mu2<-c(a,a,0,rep(0,p-3))
+
+
+r1 <- 0.3
+r2 <- -0.3   #### r2<- -0.3 for model 1, r2<-0.3 for model 2
+sig1<-diag(1,p)
+sig2<-diag(1,p)
+for (i in 1:p)
+ for (j in 1:p)
+ {
+  sig1[i,j]=r1^(abs(i-j))
+  sig2[i,j]=r2^(abs(i-j))
+ }
+pm <- 0.5
+
+
+M <- 200
+bia<-matrix(0,6,M)
+for(i in 1:M)
+{
+  warnings('off')
+  options(warn=-1)
+  w<-rbinom(n,size=1,prob=pm)
+  x1<-t(t(matrix(rnorm(n*p),,p)%*%matpower(sig1,0.5))+mu1)
+  x2<-t(t(matrix(rnorm(n*p),,p)%*%matpower(sig2,0.5))+mu2)
+  x<-x1*(1-w) + x2*w 
+  
+  ####  use BIC to determine the number of clusters ### 
+  cutpts <- 100*(-10:10)
+  datamult <- makemultdata(x, cuts = cutpts)
+  cn <- multmixmodel.sel(datamult, comps = 1:4, epsilon = 0.001)
+  q <- cn["BIC","Winner"]
+  
+  y <- sin((x[,1]+x[,2]+2))+ 0.5*rnorm(n)    ### model 1
+  # y <- sin(x[,1])+sin(x[,2])+0.5*rnorm(n)    ### model 2
+  
+  # SAVE_M
+  res <- SAVE_M(x,y,q,d,h)
+  b1 <-res$beta
+  bia[1,i]<-dv(b1,b0)
+ 
+  # SAVE_RM
+  b2<-SAVE_RM(x,y,q,d,h,b1,res$para)$beta
+  bia[2,i]<-dv(b2,b0)
+  
+  # SAVE
+  b3<-dr(y~x,method="save",nslices=h)$evectors[,1:d]
+  bia[3,i]<-dv(b3,b0)
+  
+  # ADR
+  b4<-knnsir(x,y,d,4*p)
+  bia[4,i]<-dv(b4,b0)
+
+  # MAVE
+  b5<- mave(y~x,method="meanMAVE")$dir[[d]]
+  bia[5,i]<-dv(b5,b0)
+
+  # CVE
+  b6 <- cve(y~x,method="central",max.dim = d)$res$`1`$B
+  bia[6,i]<-dv(b6,b0)
+  
+  print(i)
+}
+x1<-apply(bia,1,mean)
+s1<-apply(bia,1,sd)
+output1<-matrix(c(x1,s1),2,6,byrow = TRUE)
+column=c("SIR_M","SIR_M","SAVE","ADR","MAVE","CVE")
+row=c("mean of bias","sd of bias")  
+dimnames(output1)=list(row,column)
+output1
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
